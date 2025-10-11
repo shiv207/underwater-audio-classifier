@@ -1,0 +1,16 @@
+import librosa
+import numpy as np
+import soundfile as sf
+from scipy import signal
+{{ ... }}
+        t0 = np.random.randint(0, n_frames - t)
+        spec[:, t0:t0+t] = 0
+    
+    return spec
+
+class AudioPreprocessor:
+    def add_noise(self, audio: np.ndarray, noise_factor: float = 0.01) -> np.ndarray:
+        noise = np.random.normal(0, noise_factor, audio.shape)
+        return audio + noise
+
+{{ ... }}
