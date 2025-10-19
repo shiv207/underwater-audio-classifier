@@ -148,6 +148,26 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## 📝 Version Control Notes
+
+### Latest Update (Oct 19, 2025)
+
+**Fixed Git Push Issues:**
+- Removed large data files from version control (spectrograms.npy - 256.76 MB exceeded GitHub's 100 MB limit)
+- Updated `.gitignore` to exclude processed data files:
+  - `*.npy`, `*.npz` files
+  - `data/processed/` directory
+  - `data/training_annotations.json`
+  - `data/dataset_summary_report.json`
+
+**Important:** Processed data files remain on your local machine but are no longer tracked by git. This prevents repository bloat and allows for smoother collaboration.
+
+**Files excluded from git:**
+- Audio files (`.wav`, `.mp3`, `.flac`, `.m4a`)
+- Trained models (`.pth`, `.pt` in models/)
+- Processed spectrograms and metadata
+- Virtual environment (`venv/`)
+
 ---
 
 **Virtual Environment Location:**  
