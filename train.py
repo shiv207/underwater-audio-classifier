@@ -34,15 +34,35 @@ class UnderwaterAcousticDataset(Dataset):
         self.max_duration = max_duration
         self.sample_rate = sample_rate
         self.preprocessor = AudioPreprocessor()
-        
-        self.class_to_id = {
-            'vessels': 0,
-            'marine_animals': 1,
-            'natural_sounds': 2,
-            'other_anthropogenic': 3
+        self.class_to_id = {}
+        self.id_to_class = {}
+        self.dir_name_to_class = {}
+        class_mappings = {
+            'vessels': ['vessels', 'vessel'],
+            'marine_animals': ['marine_animals', 'acquatic_mammels', 'aquatic_mammals', 'mammals'],
+            'natural_sounds': ['natural_sounds', 'natural', 'earthquake'],
+            'other_anthropogenic': ['other_anthropogenic', 'anthropogenic', 'sonar', 'man_made']
         }
-        
-        self.id_to_class = {v: k for k, v in self.class_to_id.items()}
+        available_dirs = []
+        if os.path.exists(self.data_dir):
+            for item in os.listdir(self.data_dir):
+                item_path = self.data_dir / item
+                if item_path.is_dir():
+                    available_dirs.append(item)
+        class_id = 0
+        for standard_class, variations in class_mappings.items():
+            for dir_name in available_dirs:
+                if dir_name.lower() in [v.lower() for v in variations]:
+                    if standard_class not in self.class_to_id:
+                        self.class_to_id[standard_class] = class_id
+                        self.id_to_class[class_id] = standard_class
+                        self.dir_name_to_class[dir_name] = standard_class
+                        class_id += 1
+        if not self.class_to_id:
+            for idx, dir_name in enumerate(sorted(available_dirs)):
+                self.class_to_id[dir_name] = idx
+                self.id_to_class[idx] = dir_name
+                self.dir_name_to_class[dir_name] = dir_name
         
         self.samples = self._load_samples()
         
@@ -69,17 +89,15 @@ class UnderwaterAcousticDataset(Dataset):
                 self.samples = val_samples
     
     def _load_samples(self):
-        """Load all audio file paths and labels."""
         samples = []
-        
-        for class_name, class_id in self.class_to_id.items():
-            class_dir = self.data_dir / class_name
+        for dir_name, standard_class in self.dir_name_to_class.items():
+            class_dir = self.data_dir / dir_name
+            class_id = self.class_to_id[standard_class]
             
             if not class_dir.exists():
                 print(f"Warning: {class_dir} does not exist")
                 continue
             
-            # Find audio files
             audio_extensions = ['*.wav', '*.mp3', '*.flac']
             for ext in audio_extensions:
                 for audio_file in class_dir.glob(ext):
@@ -94,42 +112,33 @@ class UnderwaterAcousticDataset(Dataset):
     def __getitem__(self, idx):
         audio_path, label = self.samples[idx]
         
-        # Load and preprocess audio
         audio, log_mel_spec, metadata = self.preprocessor.process_audio_file(audio_path)
         
         if len(audio) == 0 or log_mel_spec.size == 0:
-            # Return dummy data for failed loads
             log_mel_spec = np.zeros((128, 100))
         
-        # Apply augmentation
         if self.augment:
-            # Audio augmentation
             if np.random.random() < 0.3:
                 audio = add_noise(audio, noise_factor=0.01)
             
-            # Spectrogram augmentation
             if np.random.random() < 0.5:
                 log_mel_spec = apply_spec_augment(log_mel_spec)
         
-        # Normalize spectrogram dimensions (pad/truncate to fixed size)
         target_time_frames = 200  # Fixed time dimension
         
         if log_mel_spec.shape[1] > target_time_frames:
-            # Truncate if too long
             log_mel_spec = log_mel_spec[:, :target_time_frames]
         elif log_mel_spec.shape[1] < target_time_frames:
-            # Pad if too short
             pad_width = target_time_frames - log_mel_spec.shape[1]
             log_mel_spec = np.pad(log_mel_spec, ((0, 0), (0, pad_width)), mode='constant')
         
-        # Convert to tensor
         spec_tensor = torch.FloatTensor(log_mel_spec).unsqueeze(0)  # Add channel dim
         label_tensor = torch.LongTensor([label])
         
         return spec_tensor, label_tensor[0]
 
 class Trainer:
-    """Trainer for underwater acoustic models."""
+    
     
     def __init__(self, 
                  model: nn.Module,
@@ -138,23 +147,12 @@ class Trainer:
                  device: str = 'cuda',
                  learning_rate: float = 1e-3,
                  weight_decay: float = 1e-4):
-        """
-        Initialize trainer.
         
-        Args:
-            model: Model to train
-            train_loader: Training data loader
-            val_loader: Validation data loader
-            device: Device to use
-            learning_rate: Learning rate
-            weight_decay: Weight decay
-        """
         self.model = model.to(device)
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.device = device
         
-        # Optimizer and scheduler
         self.optimizer = optim.AdamW(
             model.parameters(), 
             lr=learning_rate, 
@@ -165,16 +163,14 @@ class Trainer:
             self.optimizer, T_max=100
         )
         
-        # Loss function
         self.criterion = nn.CrossEntropyLoss()
         
-        # Training history
         self.train_losses = []
         self.val_losses = []
         self.val_accuracies = []
     
     def train_epoch(self):
-        """Train for one epoch."""
+        
         self.model.train()
         total_loss = 0
         num_batches = 0
@@ -183,19 +179,16 @@ class Trainer:
         for batch_idx, (data, target) in enumerate(pbar):
             data, target = data.to(self.device), target.to(self.device)
             
-            # Forward pass
             self.optimizer.zero_grad()
             output = self.model(data)
             loss = self.criterion(output, target)
             
-            # Backward pass
             loss.backward()
             self.optimizer.step()
             
             total_loss += loss.item()
             num_batches += 1
             
-            # Update progress bar
             pbar.set_postfix({'loss': loss.item()})
         
         avg_loss = total_loss / num_batches
@@ -203,7 +196,7 @@ class Trainer:
         return avg_loss
     
     def validate(self):
-        """Validate model."""
+        
         self.model.eval()
         total_loss = 0
         correct = 0
@@ -221,7 +214,6 @@ class Trainer:
                 
                 total_loss += loss.item()
                 
-                # Predictions
                 pred = output.argmax(dim=1)
                 correct += pred.eq(target).sum().item()
                 total += target.size(0)
@@ -238,39 +230,27 @@ class Trainer:
         return avg_loss, accuracy, all_predictions, all_targets
     
     def train(self, num_epochs: int, save_path: str):
-        """
-        Complete training loop.
         
-        Args:
-            num_epochs: Number of epochs to train
-            save_path: Path to save best model
-        """
         best_accuracy = 0
         
         for epoch in range(num_epochs):
             print(f"\nEpoch {epoch+1}/{num_epochs}")
             
-            # Train
             train_loss = self.train_epoch()
             
-            # Validate
             val_loss, val_accuracy, predictions, targets = self.validate()
             
-            # Update scheduler
             self.scheduler.step()
             
-            # Print metrics
             print(f"Train Loss: {train_loss:.4f}")
             print(f"Val Loss: {val_loss:.4f}")
             print(f"Val Accuracy: {val_accuracy:.4f}")
             
-            # Save best model
             if val_accuracy > best_accuracy:
                 best_accuracy = val_accuracy
                 self.save_model(save_path, epoch, val_accuracy)
                 print(f"New best model saved with accuracy: {val_accuracy:.4f}")
             
-            # Print classification report every 10 epochs
             if (epoch + 1) % 10 == 0 and len(set(targets)) > 1:
                 unique_classes = sorted(set(targets + predictions))
                 class_names = [self.model.class_names.get(i, f'class_{i}') for i in unique_classes]
@@ -289,7 +269,7 @@ class Trainer:
         return best_accuracy
     
     def save_model(self, save_path: str, epoch: int, accuracy: float):
-        """Save model checkpoint."""
+        
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         
         checkpoint = {
@@ -306,10 +286,9 @@ class Trainer:
         torch.save(checkpoint, save_path)
     
     def plot_training_history(self, save_path: str = None):
-        """Plot training history."""
+        
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
         
-        # Loss plot
         ax1.plot(self.train_losses, label='Train Loss')
         ax1.plot(self.val_losses, label='Val Loss')
         ax1.set_xlabel('Epoch')
@@ -318,7 +297,6 @@ class Trainer:
         ax1.legend()
         ax1.grid(True)
         
-        # Accuracy plot
         ax2.plot(self.val_accuracies, label='Val Accuracy')
         ax2.set_xlabel('Epoch')
         ax2.set_ylabel('Accuracy')
@@ -335,7 +313,7 @@ class Trainer:
         plt.show()
 
 def main():
-    """Main training function."""
+    
     parser = argparse.ArgumentParser(description='Train Underwater Acoustic Classifier')
     
     parser.add_argument('--data-dir', type=str, required=True,
@@ -355,7 +333,6 @@ def main():
     
     args = parser.parse_args()
     
-    # Set device
     if args.device == 'auto':
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
     else:
@@ -363,7 +340,6 @@ def main():
     
     print(f"Using device: {device}")
     
-    # Create datasets
     print("Loading datasets...")
     train_dataset = UnderwaterAcousticDataset(args.data_dir, split='train', augment=True)
     val_dataset = UnderwaterAcousticDataset(args.data_dir, split='val', augment=False)
@@ -372,7 +348,6 @@ def main():
         print("Error: No training data found!")
         return
     
-    # Create data loaders
     train_loader = DataLoader(
         train_dataset, 
         batch_size=args.batch_size, 
@@ -387,12 +362,10 @@ def main():
         num_workers=0  # Avoid multiprocessing issues
     )
     
-    # Determine number of classes from data
     sample_dataset = UnderwaterAcousticDataset(args.data_dir, split='train', augment=False)
     num_classes = len(sample_dataset.class_to_id)
     print(f"Training with {num_classes} classes: {list(sample_dataset.class_to_id.keys())}")
     
-    # Create model
     if args.model_type == 'classifier':
         model = UnderwaterAcousticClassifier(num_classes=num_classes)
         save_path = os.path.join(args.save_dir, 'best_classifier.pth')
@@ -403,7 +376,6 @@ def main():
     print(f"Model: {model.__class__.__name__}")
     print(f"Parameters: {sum(p.numel() for p in model.parameters()):,}")
     
-    # Create trainer
     trainer = Trainer(
         model=model,
         train_loader=train_loader,
@@ -412,11 +384,9 @@ def main():
         learning_rate=args.learning_rate
     )
     
-    # Train model
     print("Starting training...")
     best_accuracy = trainer.train(args.epochs, save_path)
     
-    # Plot training history
     plot_path = os.path.join(args.save_dir, f'training_history_{args.model_type}.png')
     trainer.plot_training_history(plot_path)
     

@@ -31,6 +31,13 @@ MANIFEST
 *.flac
 *.m4a
 
+# Processed data files
+*.npy
+*.npz
+data/processed/
+data/training_annotations.json
+data/dataset_summary_report.json
+
 # Results
 results/*.json
 !results/.gitkeep
