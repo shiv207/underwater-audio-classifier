@@ -1,0 +1,15 @@
+{
+  "best_accuracy": 0.047619047619047616,
+  "best_balanced_accuracy": 0.25,
+  "num_classes": 4,
+  "samples_per_class": [
+    53,
+    8,
+    1,
+    10
+  ],
+  "imbalance_ratio": 53.0,
+  "use_focal_loss": true,
+  "use_augmentation": true,
+  "use_rl": false
+}

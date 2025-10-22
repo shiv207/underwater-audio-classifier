@@ -1,3 +1,7 @@
+"""
+Core model definitions for underwater acoustic classification.
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,7 +10,10 @@ from typing import Dict, List, Tuple
 import math
 from einops import rearrange
 
+
 class PositionalEncoding(nn.Module):
+    """Positional encoding for transformer models."""
+    
     def __init__(self, d_model: int, max_len: int = 5000):
         super().__init__()
         
@@ -24,7 +31,10 @@ class PositionalEncoding(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return x + self.pe[:x.size(0), :]
 
+
 class CNNFeatureExtractor(nn.Module):
+    """CNN backbone for feature extraction from spectrograms."""
+    
     def __init__(self, input_channels: int = 1, base_channels: int = 32):
         super().__init__()
         
@@ -76,7 +86,10 @@ class CNNFeatureExtractor(nn.Module):
         x = x.view(batch_size, -1)
         return x
 
+
 class TransformerClassifier(nn.Module):
+    """Transformer-based classifier head."""
+    
     def __init__(self, 
                  input_dim: int,
                  d_model: int = 512,
@@ -116,7 +129,10 @@ class TransformerClassifier(nn.Module):
         x = self.classifier(x)
         return x
 
+
 class UnderwaterAcousticClassifier(nn.Module):
+    """Main underwater acoustic classification model."""
+    
     def __init__(self, 
                  num_classes: int = 4,
                  input_channels: int = 1,
@@ -166,7 +182,10 @@ class UnderwaterAcousticClassifier(nn.Module):
         output = self.transformer_classifier(sequence_features)
         return output
 
+
 class AcousticClassifier:
+    """High-level classifier interface."""
+    
     def __init__(self, model_path: str = None, device: str = None):
         self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = UnderwaterAcousticClassifier()
@@ -175,15 +194,15 @@ class AcousticClassifier:
             self.load_model(model_path)
         self.model.eval()
         self.id_to_class = {
-            1: 'vessels',
-            2: 'marine_animals',
-            3: 'natural_sounds', 
-            4: 'other_anthropogenic'
+            0: 'vessels',
+            1: 'marine_animals',
+            2: 'natural_sounds', 
+            3: 'other_anthropogenic'
         }
-        
         self.class_to_id = {v: k for k, v in self.id_to_class.items()}
     
     def load_model(self, model_path: str):
+        """Load model from checkpoint."""
         try:
             checkpoint = torch.load(model_path, map_location=self.device)
             if 'model_state_dict' in checkpoint:
@@ -195,8 +214,9 @@ class AcousticClassifier:
             print(f"Could not load classifier model: {e}")
     
     def classify_spectrogram(self, log_mel_spec: np.ndarray) -> Dict:
+        """Classify a log-mel spectrogram."""
         if log_mel_spec.size == 0:
-            return {'category_id': 3, 'confidence': 0.0, 'probabilities': {}}
+            return {'category_id': 4, 'confidence': 0.0, 'probabilities': {}}
         spec_tensor = torch.FloatTensor(log_mel_spec).unsqueeze(0).unsqueeze(0)
         spec_tensor = spec_tensor.to(self.device)
         with torch.no_grad():
@@ -205,7 +225,9 @@ class AcousticClassifier:
         probs = probabilities[0].cpu().numpy()
         predicted_class = np.argmax(probs)
         confidence = float(probs[predicted_class])
+        
         category_id = predicted_class + 1
+        
         prob_dict = {}
         for i, prob in enumerate(probs):
             class_name = self.model.class_names[i]
@@ -213,11 +235,13 @@ class AcousticClassifier:
         return {
             'category_id': category_id,
             'confidence': confidence,
-            'probabilities': prob_dict
+            'probabilities': prob_dict,
+            'predicted_class_name': self.id_to_class[predicted_class]
         }
     
     def classify_event(self, log_mel_spec: np.ndarray, start_frame: int, end_frame: int) -> Dict:
+        """Classify a specific event in the spectrogram."""
         if log_mel_spec.size == 0 or start_frame >= end_frame:
-            return {'category_id': 3, 'confidence': 0.0, 'probabilities': {}}
+            return {'category_id': 4, 'confidence': 0.0, 'probabilities': {}}
         event_spec = log_mel_spec[:, start_frame:end_frame+1]
         return self.classify_spectrogram(event_spec)

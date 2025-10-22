@@ -1,0 +1,14 @@
+{
+  "model_type": "ast",
+  "best_accuracy": 0.0,
+  "best_balanced_accuracy": 0.0,
+  "num_classes": 4,
+  "samples_per_class": [
+    53,
+    0,
+    9,
+    10
+  ],
+  "total_params": 86713348,
+  "trainable_params": 526084
+}
