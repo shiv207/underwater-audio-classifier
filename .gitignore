@@ -30,6 +30,8 @@ MANIFEST
 *.mp3
 *.flac
 *.m4a
+*.webm
+data/training/
 
 # Processed data files
 *.npy
